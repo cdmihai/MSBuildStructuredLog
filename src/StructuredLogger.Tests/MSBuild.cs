@@ -1,7 +1,9 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Xml;
 using Microsoft.Build.Evaluation;
+using Microsoft.Build.Execution;
 using Microsoft.Build.Framework;
 
 namespace StructuredLogger.Tests
@@ -10,12 +12,35 @@ namespace StructuredLogger.Tests
     {
         public static bool BuildProject(string projectText, params ILogger[] loggers)
         {
-            Project project = CreateInMemoryProject(projectText, loggers: loggers);
-            bool success = project.Build(loggers);
-            return success;
+            var projectFile = TestUtilities.GetFullPath("build.proj");
+
+            try
+            {
+                File.WriteAllText(projectFile, CleanupFileContents(projectText));
+
+                var result = BuildManager.DefaultBuildManager.Build(
+                    new BuildParameters
+                    {
+                        ShutdownInProcNodeOnBuildFinish = true,
+                        EnableNodeReuse = false,
+                        Loggers = loggers
+                    },
+                    new BuildRequestData(
+                        projectFile,
+                        new Dictionary<string, string>(),
+                        null,
+                        new string[0],
+                        null));
+
+                return result.OverallResult == BuildResultCode.Success;
+            }
+            finally
+            {
+                File.Delete(projectFile);
+            }
         }
 
-        public static Project CreateInMemoryProject(string projectText, ProjectCollection projectCollection = null, params ILogger[] loggers)
+        public static Project CreateProjectInMemory(string projectText, ProjectCollection projectCollection = null, params ILogger[] loggers)
         {
             XmlReaderSettings readerSettings = new XmlReaderSettings { DtdProcessing = DtdProcessing.Ignore };
             projectCollection = projectCollection ?? new ProjectCollection();
