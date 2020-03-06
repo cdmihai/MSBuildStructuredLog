@@ -1,7 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Diagnostics;
-using System.Diagnostics.Contracts;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -14,7 +12,7 @@ namespace StructuredLogViewer
 {
     public class SettingsService
     {
-        private const int maxCount = 10;
+        private const int MaxCount = 10;
 
         // TODO: protect access to these with a Mutex
         private static readonly string recentLogsFilePath = Path.Combine(GetRootPath(), "RecentLogs.txt");
@@ -26,7 +24,7 @@ namespace StructuredLogViewer
         private static readonly string settingsFilePath = Path.Combine(GetRootPath(), "Settings.txt");
         private static readonly string tempFolder = Path.Combine(GetRootPath(), "Temp");
 
-        private static bool settingsRead = false;
+        private static bool _settingsRead;
 
         public static void AddRecentLogFile(string filePath)
         {
@@ -40,26 +38,21 @@ namespace StructuredLogViewer
 
         public static void AddRecentMSBuildLocation(string filePath)
         {
-            cachedRecentMSBuildLocations = null;
+            _cachedRecentMSBuildLocations = null;
             AddRecentItem(filePath, recentMSBuildLocationsFilePath);
         }
 
-        private static IEnumerable<string> cachedRecentMSBuildLocations;
+        private static IEnumerable<string> _cachedRecentMSBuildLocations;
 
         public static IEnumerable<string> GetRecentMSBuildLocations(IEnumerable<string> extraLocations = null)
         {
-            extraLocations = extraLocations ?? Enumerable.Empty<string>();
+            extraLocations ??= Enumerable.Empty<string>();
 
-            if (cachedRecentMSBuildLocations == null)
-            {
-                cachedRecentMSBuildLocations = GetRecentItems(recentMSBuildLocationsFilePath)
-                    .Where(File.Exists)
-                    .Union(extraLocations, StringComparer.OrdinalIgnoreCase)
-                    .Distinct(StringComparer.OrdinalIgnoreCase)
-                    .ToArray();
-            }
-
-            return cachedRecentMSBuildLocations;
+            return _cachedRecentMSBuildLocations ??= GetRecentItems(recentMSBuildLocationsFilePath)
+                .Where(File.Exists)
+                .Union(extraLocations, StringComparer.OrdinalIgnoreCase)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
         }
 
         public static void AddRecentSearchText(string searchText, bool discardPrefixes = false)
@@ -168,7 +161,7 @@ namespace StructuredLogViewer
                 }
             }
 
-            if (list.Count >= maxCount)
+            if (list.Count >= MaxCount)
             {
                 list.RemoveAt(list.Count - 1);
             }
@@ -198,7 +191,7 @@ namespace StructuredLogViewer
                 lines = File.ReadAllLines(customArgumentsFilePath);
             }
 
-            if (FindArguments(lines, filePath, out string arguments, out int index))
+            if (FindArguments(lines, filePath, out string arguments, out _))
             {
                 return arguments;
             }
@@ -264,9 +257,7 @@ namespace StructuredLogViewer
 
                 var list = File.ReadAllLines(customArgumentsFilePath).ToList();
 
-                string arguments;
-                int index;
-                if (FindArguments(list, projectFilePath, out arguments, out index))
+                if (FindArguments(list, projectFilePath, out _, out var index))
                 {
                     list.RemoveAt(index);
                 }
@@ -281,46 +272,46 @@ namespace StructuredLogViewer
             }
         }
 
-        private static bool enableTreeViewVirtualization = true;
+        private static bool _enableTreeViewVirtualization = true;
 
         public static bool EnableTreeViewVirtualization
         {
             get
             {
                 EnsureSettingsRead();
-                return enableTreeViewVirtualization;
+                return _enableTreeViewVirtualization;
             }
 
             set
             {
-                if (enableTreeViewVirtualization == value)
+                if (_enableTreeViewVirtualization == value)
                 {
                     return;
                 }
 
-                enableTreeViewVirtualization = value;
+                _enableTreeViewVirtualization = value;
                 SaveSettings();
             }
         }
 
-        private static bool parentAllTargetsUnderProject = false;
+        private static bool _parentAllTargetsUnderProject;
 
         public static bool ParentAllTargetsUnderProject
         {
             get
             {
                 EnsureSettingsRead();
-                return parentAllTargetsUnderProject;
+                return _parentAllTargetsUnderProject;
             }
 
             set
             {
-                if (parentAllTargetsUnderProject == value)
+                if (_parentAllTargetsUnderProject == value)
                 {
                     return;
                 }
 
-                parentAllTargetsUnderProject = value;
+                _parentAllTargetsUnderProject = value;
                 Construction.ParentAllTargetsUnderProject = value;
                 SaveSettings();
             }
@@ -328,21 +319,21 @@ namespace StructuredLogViewer
 
         private static void EnsureSettingsRead()
         {
-            if (!settingsRead)
+            if (!_settingsRead)
             {
                 ReadSettings();
-                settingsRead = true;
+                _settingsRead = true;
             }
         }
 
-        const string Virtualization = "Virtualization=";
+        private const string Virtualization = "Virtualization=";
         const string ParentAllTargetsUnderProjectSetting = nameof(ParentAllTargetsUnderProject) + "=";
 
         private static void SaveSettings()
         {
             var sb = new StringBuilder();
-            sb.AppendLine(Virtualization + enableTreeViewVirtualization.ToString());
-            sb.AppendLine(ParentAllTargetsUnderProjectSetting + parentAllTargetsUnderProject.ToString());
+            sb.AppendLine(Virtualization + _enableTreeViewVirtualization.ToString());
+            sb.AppendLine(ParentAllTargetsUnderProjectSetting + _parentAllTargetsUnderProject.ToString());
 
 
             using (SingleGlobalInstance.Acquire(Path.GetFileName(settingsFilePath)))
@@ -368,7 +359,7 @@ namespace StructuredLogViewer
                         var value = line.Substring(Virtualization.Length);
                         if (bool.TryParse(value, out bool boolValue))
                         {
-                            enableTreeViewVirtualization = boolValue;
+                            _enableTreeViewVirtualization = boolValue;
                         }
                     }
                     else if (line.StartsWith(ParentAllTargetsUnderProjectSetting))
@@ -376,14 +367,14 @@ namespace StructuredLogViewer
                         var value = line.Substring(ParentAllTargetsUnderProjectSetting.Length);
                         if (bool.TryParse(value, out bool boolValue))
                         {
-                            parentAllTargetsUnderProject = boolValue;
+                            _parentAllTargetsUnderProject = boolValue;
                         }
                     }
                 }
             }
         }
 
-        private static bool cleanedUpTempFiles = false;
+        private static bool _cleanedUpTempFiles;
 
         public static string WriteContentToTempFileAndGetPath(string content, string fileExtension)
         {
@@ -401,7 +392,7 @@ namespace StructuredLogViewer
                 File.WriteAllText(filePath, content);
             }
 
-            if (!cleanedUpTempFiles)
+            if (!_cleanedUpTempFiles)
             {
                 System.Threading.Tasks.Task.Run(() => CleanupTempFiles());
             }
@@ -416,12 +407,12 @@ namespace StructuredLogViewer
         {
             using (SingleGlobalInstance.Acquire("StructuredLogViewerTempFileCleanup"))
             {
-                if (cleanedUpTempFiles)
+                if (_cleanedUpTempFiles)
                 {
                     return;
                 }
 
-                cleanedUpTempFiles = true;
+                _cleanedUpTempFiles = true;
 
                 var folder = tempFolder;
                 try
